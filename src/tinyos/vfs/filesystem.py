@@ -15,17 +15,20 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
+from typing import Callable
 
 from tinyos.config import TinyOSConfig
-from tinyos.errors import AlreadyExistsError, PathNotFoundError
+from tinyos.errors import AlreadyExistsError, PathNotFoundError, PermissionDeniedError
 from tinyos.storage import ExpandableVirtualDisk
 from tinyos.vfs.directory_entry import DirectoryEntry
-from tinyos.vfs.index import MemoryDirectoryIndex
+from tinyos.vfs.index import DirectoryIndex, MemoryDirectoryIndex
 from tinyos.vfs.inode import Inode
 from tinyos.vfs.path import normalize_path, split_parent
 
 _SUPERBLOCK_MAGIC = "TNYOSFS1"
 _SUPERBLOCK_VERSION = 1
+_PRIMARY_SUPERBLOCK_BLOCK_ID = 0
+_BACKUP_SUPERBLOCK_BLOCK_ID = 1
 
 
 @dataclass(slots=True)
@@ -41,6 +44,7 @@ class VirtualFileSystem:
 
     config: TinyOSConfig = field(default_factory=TinyOSConfig)
     disk: ExpandableVirtualDisk | None = None
+    index_factory: Callable[[], DirectoryIndex] = MemoryDirectoryIndex
     root_path: str = "/"
     current_working_directory: str = "/"
     _loaded: bool = field(init=False, default=False, repr=False)
@@ -48,7 +52,7 @@ class VirtualFileSystem:
     _root_inode_id: int = field(init=False, default=1, repr=False)
     _metadata_blocks: list[int] = field(init=False, default_factory=list, repr=False)
     _inodes: dict[int, Inode] = field(init=False, default_factory=dict, repr=False)
-    _directories: dict[int, MemoryDirectoryIndex] = field(init=False, default_factory=dict, repr=False)
+    _directories: dict[int, DirectoryIndex] = field(init=False, default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         """初始化对象，但推迟实际磁盘加载。"""
@@ -56,51 +60,63 @@ class VirtualFileSystem:
         if self.disk is None:
             self.disk = ExpandableVirtualDisk(config=self.config)
 
-    def mkdir(self, path: str, cwd: str | None = None) -> None:
+    def mkdir(self, path: str, cwd: str | None = None, acting_uid: int = 0) -> None:
         """创建目录。"""
 
         self._ensure_loaded()
         absolute_path = self._normalize(path, cwd)
         parent_inode_id, name = self._resolve_parent(absolute_path)
+        parent_inode = self._inodes[parent_inode_id]
+        self._require_permission(parent_inode, acting_uid=acting_uid, permission="write")
         parent_directory = self._directories[parent_inode_id]
         if parent_directory.contains(name):
             raise AlreadyExistsError(f"path already exists: {absolute_path}")
 
-        inode = self._create_inode(kind="directory", permissions=0o755)
-        self._directories[inode.inode_id] = MemoryDirectoryIndex()
+        inode = self._create_inode(kind="directory", permissions=0o755, owner_uid=acting_uid)
+        self._directories[inode.inode_id] = self.index_factory()
         parent_directory.set(name, inode.inode_id)
         self._touch_inode(parent_inode_id)
         self._persist()
 
-    def create_file(self, path: str, cwd: str | None = None) -> None:
+    def create_file(self, path: str, cwd: str | None = None, acting_uid: int = 0) -> None:
         """创建空文件。"""
 
         self._ensure_loaded()
         absolute_path = self._normalize(path, cwd)
         parent_inode_id, name = self._resolve_parent(absolute_path)
+        parent_inode = self._inodes[parent_inode_id]
+        self._require_permission(parent_inode, acting_uid=acting_uid, permission="write")
         parent_directory = self._directories[parent_inode_id]
         if parent_directory.contains(name):
             raise AlreadyExistsError(f"path already exists: {absolute_path}")
 
-        inode = self._create_inode(kind="file", permissions=0o644)
+        inode = self._create_inode(kind="file", permissions=0o644, owner_uid=acting_uid)
         parent_directory.set(name, inode.inode_id)
         self._touch_inode(parent_inode_id)
         self._persist()
 
-    def read_file(self, path: str, cwd: str | None = None) -> bytes:
+    def read_file(self, path: str, cwd: str | None = None, acting_uid: int = 0) -> bytes:
         """读取文件内容。"""
 
         self._ensure_loaded()
         inode = self._resolve_inode(self._normalize(path, cwd))
         if inode.kind != "file":
             raise ValueError("path does not reference a file")
+        self._require_permission(inode, acting_uid=acting_uid, permission="read")
 
         payload = bytearray()
         for block_id in inode.data_blocks:
             payload.extend(self.disk.read_block(block_id))
         return bytes(payload[: inode.size])
 
-    def write_file(self, path: str, data: bytes, cwd: str | None = None, append: bool = False) -> None:
+    def write_file(
+        self,
+        path: str,
+        data: bytes,
+        cwd: str | None = None,
+        append: bool = False,
+        acting_uid: int = 0,
+    ) -> None:
         """写入文件内容。
 
         当前版本支持：
@@ -113,8 +129,9 @@ class VirtualFileSystem:
         inode = self._resolve_inode(absolute_path)
         if inode.kind != "file":
             raise ValueError("path does not reference a file")
+        self._require_permission(inode, acting_uid=acting_uid, permission="write")
 
-        existing = self.read_file(absolute_path) if append else b""
+        existing = self.read_file(absolute_path, acting_uid=acting_uid) if append else b""
         payload = existing + data
 
         if inode.data_blocks:
@@ -134,7 +151,7 @@ class VirtualFileSystem:
         inode.touch()
         self._persist()
 
-    def delete_file(self, path: str, cwd: str | None = None) -> None:
+    def delete_file(self, path: str, cwd: str | None = None, acting_uid: int = 0) -> None:
         """删除文件或空目录。"""
 
         self._ensure_loaded()
@@ -143,6 +160,8 @@ class VirtualFileSystem:
             raise ValueError("root directory cannot be deleted")
 
         parent_inode_id, name = self._resolve_parent(absolute_path)
+        parent_inode = self._inodes[parent_inode_id]
+        self._require_permission(parent_inode, acting_uid=acting_uid, permission="write")
         parent_directory = self._directories[parent_inode_id]
         inode_id = parent_directory.get(name)
         inode = self._inodes[inode_id]
@@ -161,20 +180,23 @@ class VirtualFileSystem:
         self._touch_inode(parent_inode_id)
         self._persist()
 
-    def list_dir(self, path: str = "/", cwd: str | None = None) -> list[DirectoryEntry]:
+    def list_dir(self, path: str = "/", cwd: str | None = None, acting_uid: int = 0) -> list[DirectoryEntry]:
         """列出目录项。"""
 
         self._ensure_loaded()
         inode = self._resolve_inode(self._normalize(path, cwd))
         if inode.kind != "directory":
             raise ValueError("path does not reference a directory")
+        self._require_permission(inode, acting_uid=acting_uid, permission="read")
         return self._directories[inode.inode_id].list_entries()
 
-    def stat(self, path: str, cwd: str | None = None) -> Inode:
+    def stat(self, path: str, cwd: str | None = None, acting_uid: int = 0) -> Inode:
         """返回 inode 元数据。"""
 
         self._ensure_loaded()
-        return self._resolve_inode(self._normalize(path, cwd))
+        inode = self._resolve_inode(self._normalize(path, cwd))
+        self._require_permission(inode, acting_uid=acting_uid, permission="read")
+        return inode
 
     def close(self) -> None:
         """关闭底层磁盘。"""
@@ -191,13 +213,21 @@ class VirtualFileSystem:
 
         assert self.disk is not None
         self.disk.open()
-        superblock_bytes = self.disk.read_block(0)
-        superblock = self._decode_json_block(superblock_bytes)
-        if superblock.get("magic") != _SUPERBLOCK_MAGIC:
+        primary_superblock, primary_error = self._try_read_superblock(_PRIMARY_SUPERBLOCK_BLOCK_ID)
+        backup_superblock, backup_error = self._try_read_superblock(_BACKUP_SUPERBLOCK_BLOCK_ID)
+
+        if primary_superblock is None and backup_superblock is None:
+            if primary_error is not None or backup_error is not None:
+                raise ValueError("filesystem metadata corrupted")
             self._format_new_filesystem()
             return
 
-        self._load_from_superblock(superblock)
+        if primary_superblock is not None:
+            self._load_from_superblock(primary_superblock)
+        elif backup_superblock is not None:
+            self._load_from_superblock(backup_superblock)
+        else:
+            raise ValueError("filesystem metadata corrupted")
         self._loaded = True
 
     def _format_new_filesystem(self) -> None:
@@ -213,7 +243,7 @@ class VirtualFileSystem:
         self._next_inode_id = 2
         self._metadata_blocks = []
         self._inodes = {root_inode.inode_id: root_inode}
-        self._directories = {root_inode.inode_id: MemoryDirectoryIndex()}
+        self._directories = {root_inode.inode_id: self.index_factory()}
         self._loaded = True
         self._persist()
 
@@ -244,9 +274,13 @@ class VirtualFileSystem:
             for inode_id, serialized in state["inodes"].items()
         }
         self._directories = {
-            int(inode_id): MemoryDirectoryIndex(entries={name: int(target) for name, target in mapping.items()})
+            int(inode_id): self.index_factory()
             for inode_id, mapping in state["directories"].items()
         }
+        for inode_id, mapping in state["directories"].items():
+            directory = self._directories[int(inode_id)]
+            for name, target in mapping.items():
+                directory.set(name, int(target))
 
     def _persist(self) -> None:
         """把当前文件系统状态写入磁盘。
@@ -289,7 +323,8 @@ class VirtualFileSystem:
                 "metadata_blocks": [],
             }
         )
-        self.disk.write_block(0, placeholder)
+        self.disk.write_block(_PRIMARY_SUPERBLOCK_BLOCK_ID, placeholder)
+        self.disk.write_block(_BACKUP_SUPERBLOCK_BLOCK_ID, placeholder)
 
         block_size = self.config.block_size_bytes
         required_blocks = max(1, math.ceil(len(state_payload) / block_size))
@@ -315,7 +350,8 @@ class VirtualFileSystem:
                 "metadata_blocks": self._metadata_blocks,
             }
         )
-        self.disk.write_block(0, superblock)
+        self.disk.write_block(_PRIMARY_SUPERBLOCK_BLOCK_ID, superblock)
+        self.disk.write_block(_BACKUP_SUPERBLOCK_BLOCK_ID, superblock)
         self.disk.flush()
 
     def _resolve_inode(self, absolute_path: str) -> Inode:
@@ -344,14 +380,14 @@ class VirtualFileSystem:
             raise PathNotFoundError(f"parent path is not a directory: {parent_path}")
         return parent_inode.inode_id, name
 
-    def _create_inode(self, kind: str, permissions: int) -> Inode:
+    def _create_inode(self, kind: str, permissions: int, owner_uid: int) -> Inode:
         """创建一个新的 inode 并注册到 inode 表。"""
 
         inode = Inode(
             inode_id=self._next_inode_id,
             kind=kind,
             permissions=permissions,
-            owner_uid=0,
+            owner_uid=owner_uid,
         )
         self._next_inode_id += 1
         self._inodes[inode.inode_id] = inode
@@ -381,4 +417,57 @@ class VirtualFileSystem:
         stripped = payload.rstrip(b"\x00")
         if not stripped:
             return {}
-        return json.loads(stripped.decode("utf-8"))
+        try:
+            return json.loads(stripped.decode("utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("filesystem metadata corrupted") from error
+
+    def _read_superblock(self, block_id: int) -> dict[str, object] | None:
+        """读取一个超级块副本。
+
+        返回值语义：
+        - `None`：这个块还是空白块
+        - `dict`：解析成功且是合法超级块
+        - 抛异常：内容存在但已损坏
+        """
+
+        payload = self.disk.read_block(block_id)
+        if payload.rstrip(b"\x00") == b"":
+            return None
+        decoded = self._decode_json_block(payload)
+        if decoded.get("magic") != _SUPERBLOCK_MAGIC:
+            return None
+        if int(decoded.get("version", -1)) != _SUPERBLOCK_VERSION:
+            raise ValueError("unsupported filesystem metadata version")
+        return decoded
+
+    def _try_read_superblock(self, block_id: int) -> tuple[dict[str, object] | None, ValueError | None]:
+        """安全读取超级块副本。
+
+        返回值中：
+        - 第一个元素是成功解析出的超级块或 `None`
+        - 第二个元素是解析失败时的 `ValueError`
+        """
+
+        try:
+            return self._read_superblock(block_id), None
+        except ValueError as error:
+            return None, error
+
+    def _require_permission(self, inode: Inode, *, acting_uid: int, permission: str) -> None:
+        """验证当前用户是否有权限访问 inode。"""
+
+        if acting_uid == 0:
+            return
+
+        permission_bit = {
+            "read": 0o4,
+            "write": 0o2,
+            "execute": 0o1,
+        }[permission]
+        mode = inode.permissions
+        owner_bits = (mode >> 6) & 0o7
+        other_bits = mode & 0o7
+        active_bits = owner_bits if acting_uid == inode.owner_uid else other_bits
+        if not (active_bits & permission_bit):
+            raise PermissionDeniedError("permission denied")
