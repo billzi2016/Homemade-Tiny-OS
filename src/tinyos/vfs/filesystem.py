@@ -21,7 +21,7 @@ from tinyos.config import TinyOSConfig
 from tinyos.errors import AlreadyExistsError, PathNotFoundError, PermissionDeniedError
 from tinyos.storage import ExpandableVirtualDisk
 from tinyos.vfs.directory_entry import DirectoryEntry
-from tinyos.vfs.index import DirectoryIndex, MemoryDirectoryIndex
+from tinyos.vfs.index import DirectoryIndex, MemoryDirectoryIndex, SortedContainersDirectoryIndex
 from tinyos.vfs.inode import Inode
 from tinyos.vfs.path import normalize_path, split_parent
 
@@ -44,7 +44,7 @@ class VirtualFileSystem:
 
     config: TinyOSConfig = field(default_factory=TinyOSConfig)
     disk: ExpandableVirtualDisk | None = None
-    index_factory: Callable[[], DirectoryIndex] = MemoryDirectoryIndex
+    index_factory: Callable[[], DirectoryIndex] = SortedContainersDirectoryIndex
     root_path: str = "/"
     current_working_directory: str = "/"
     _loaded: bool = field(init=False, default=False, repr=False)

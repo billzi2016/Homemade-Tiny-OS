@@ -22,7 +22,9 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Operating System",
 ]
-dependencies = []
+dependencies = [
+  "sortedcontainers>=2.4.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -38,4 +40,3 @@ where = ["src"]
 [tool.unittest]
 test-directory = "tests"
 pattern = "test_*.py"
-
