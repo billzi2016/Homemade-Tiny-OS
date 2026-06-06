@@ -8,17 +8,17 @@
 
 ## Phase 1: 项目骨架与测试基线
 
-- [ ] 建立 `src/tinyos/` 基础包结构
-- [ ] 建立 `tests/unit`、`tests/integration`、`tests/e2e` 目录
-- [ ] 先写配置默认值测试
-- [ ] 实现配置对象与默认参数
-- [ ] 先写非法配置拒绝测试
-- [ ] 实现配置校验逻辑
-- [ ] 先写统一错误类型测试
-- [ ] 实现基础异常层级
-- [ ] 先写核心对象可构造测试
-- [ ] 定义 `ExpandableVirtualDisk`、`VirtualFileSystem`、`KernelScheduler`、`Shell`、`KernelStats` 骨架
-- [ ] 统一测试运行方式并写入说明
+- [x] 建立 `src/tinyos/` 基础包结构
+- [x] 建立 `tests/unit`、`tests/integration`、`tests/e2e` 目录
+- [x] 先写配置默认值测试
+- [x] 实现配置对象与默认参数
+- [x] 先写非法配置拒绝测试
+- [x] 实现配置校验逻辑
+- [x] 先写统一错误类型测试
+- [x] 实现基础异常层级
+- [x] 先写核心对象可构造测试
+- [x] 定义 `ExpandableVirtualDisk`、`VirtualFileSystem`、`KernelScheduler`、`Shell`、`KernelStats` 骨架
+- [x] 统一测试运行方式并写入说明
 
 ## Phase 2: 可扩展虚拟磁盘与块设备
 
