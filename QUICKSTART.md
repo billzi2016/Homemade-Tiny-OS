@@ -296,7 +296,119 @@ shell.register_command("hello", lambda args: f"hello {' '.join(args)}".strip())
 shell.execute("hello tiny os")
 ```
 
-## 9. 关闭系统
+## 9. 虚拟磁盘位置与清理
+
+这个项目里的“磁盘”本质上是宿主机上的镜像文件。  
+不同运行方式，会把磁盘写到不同位置。
+
+### 9.1 默认位置
+
+如果你直接按本 QUICKSTART 里的最小示例手动创建磁盘：
+
+```python
+disk = ExpandableVirtualDisk("tinyos.disk", config=config)
+```
+
+那么默认会在**项目根目录**生成：
+
+```text
+tinyos.disk
+```
+
+也就是说，完整路径通常就是：
+
+```text
+/Users/bizi/Desktop/GitHub/Homemade-Tiny-OS/tinyos.disk
+```
+
+### 9.2 `scripts/` 演示脚本的磁盘位置
+
+为了避免不同演示脚本互相污染，编号脚本不会共用根目录下的 `tinyos.disk`。  
+它们会把自己的磁盘写到：
+
+```text
+scripts/.artifacts/
+```
+
+例如当前已经用到这些磁盘：
+
+- `scripts/.artifacts/01-basic-filesystem/basic.disk`
+- `scripts/.artifacts/02-persistence-recovery/persist.disk`
+- `scripts/.artifacts/03-scheduler-and-shell/scheduler.disk`
+- `scripts/.artifacts/04-observability/observability.disk`
+- `scripts/.artifacts/05-permissions-and-reliability/permissions.disk`
+- `scripts/.artifacts/05-permissions-and-reliability/disk-full.disk`
+- `scripts/.artifacts/06-full-demo/full-demo.disk`
+
+这种做法的意图很简单：
+
+- 每个脚本都有自己的独立现场
+- 持久化测试不会被别的脚本覆盖
+- 出问题时更容易定位是哪一组演示产物
+
+### 9.3 `tests/` 测试磁盘位置
+
+自动化测试不会把磁盘写到项目根目录。  
+测试统一把镜像放到：
+
+```text
+tests/.artifacts/
+```
+
+并且通常会按测试用例名继续分目录，例如：
+
+```text
+tests/.artifacts/tests.unit.test_disk.DiskTestCase.test_reopen_existing_disk_persists_metadata/
+tests/.artifacts/tests.integration.test_runtime_integration.RuntimeIntegrationTestCase.test_reboot_preserves_files/
+```
+
+这样做的目的：
+
+- 单元测试、联调测试、实际运行测试彼此隔离
+- 某个测试失败时，可以直接查看它自己的磁盘残留物
+- 不会污染你手动演示时用的磁盘文件
+
+### 9.4 清理方式
+
+如果你只是想清理手动启动示例生成的默认磁盘，删除项目根目录下的：
+
+```text
+tinyos.disk
+```
+
+如果你想清理脚本演示产物，删除：
+
+```text
+scripts/.artifacts/
+```
+
+如果你想清理自动化测试产物，删除：
+
+```text
+tests/.artifacts/
+```
+
+需要注意：
+
+- 删除这些 `.disk` 文件只会清理 Tiny OS 的镜像，不会影响你的真实宿主机文件系统
+- 但它会让对应的持久化状态丢失
+- 如果你正想验证“重启后还能恢复”，就不要提前删掉对应磁盘
+
+### 9.5 Git 跟踪规则
+
+当前仓库里：
+
+- `*.disk` 默认被 `.gitignore` 忽略
+- `tinyos.disk` 也被忽略
+- `tests/.artifacts/` 也被忽略
+
+所以正常情况下：
+
+- 虚拟磁盘会留在本地，供你反复调试
+- 它们不会被误提交到仓库
+- 但 `scripts/output/` 里的演示日志是会保留并可提交的
+
+## 10. 关闭系统
 
 当你结束当前会话时，建议显式关闭：
 
@@ -306,33 +418,33 @@ shell.close()
 
 这样会把底层 VFS 和磁盘句柄正确关掉。
 
-## 10. 跑测试
+## 11. 跑测试
 
-### 10.1 全量测试
+### 11.1 全量测试
 
 ```bash
 python3 -B -m unittest discover -s tests -p 'test_*.py'
 ```
 
-### 10.2 只跑联调测试
+### 11.2 只跑联调测试
 
 ```bash
 python3 -B -m unittest tests.integration.test_runtime_integration -v
 ```
 
-### 10.3 只跑实际运行测试
+### 11.3 只跑实际运行测试
 
 ```bash
 python3 -B -m unittest tests.e2e.test_actual_run_flow -v
 ```
 
-### 10.4 只跑 Shell 联动测试
+### 11.4 只跑 Shell 联动测试
 
 ```bash
 python3 -B -m unittest tests.integration.test_shell_commands -v
 ```
 
-## 11. 推荐演示顺序
+## 12. 推荐演示顺序
 
 如果你要向别人演示当前 Tiny OS，建议按这个顺序：
 
@@ -351,7 +463,7 @@ python3 -B -m unittest tests.integration.test_shell_commands -v
 13. 重新创建一个 `Shell`
 14. 再次 `cat /workspace/notes.txt`，证明状态恢复
 
-## 12. 当前限制
+## 13. 当前限制
 
 当前 QUICKSTART 所描述的是**当前仓库已实现的真实能力**，不是未来规划。
 
