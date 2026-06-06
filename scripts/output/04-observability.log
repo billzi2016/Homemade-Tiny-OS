@@ -1,0 +1,47 @@
+
+==============================================================================
+04 系统观测演示
+==============================================================================
+
+[STEP] 准备一些运行状态，确保观测命令有内容可看
+  $ mkdir /obs
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ cd /obs
+    -> /obs
+  $ touch a.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ echo "observe" > a.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+
+[STEP] 查看 top 输出
+  $ top
+    -> ticks=1
+    -> switches=1
+    -> current=100:observer:READY
+    -> queue=100
+    -> cwd=/obs
+    [OK] top 应显示总 tick 数
+    [OK] top 应显示就绪队列
+
+[STEP] 查看 sysstat 输出
+  $ sysstat
+    -> disk_current=32768
+    -> disk_max=131072
+    -> blocks=8
+    -> page_faults=0
+    -> tree_splits=0
+    -> scheduler_switches=1
+    [OK] sysstat 应显示当前磁盘大小
+    [OK] sysstat 应显示调度切换次数
+
+[STEP] 查看 dmesg 输出
+  $ dmesg
+    -> [SCHED] created pid=100 name=observer
+    -> [SCHED] switch -> pid=100
+    -> [SHELL] mkdir /obs
+    -> [SHELL] touch a.txt
+    -> [SHELL] echo > a.txt
+    [OK] dmesg 应包含调度日志
+    [OK] dmesg 应包含 Shell 操作日志
+
+[DONE] 04 系统观测演示完成。

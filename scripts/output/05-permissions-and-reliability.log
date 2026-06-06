@@ -1,0 +1,29 @@
+
+==============================================================================
+05 权限与可靠性演示
+==============================================================================
+
+[STEP] 普通用户尝试在根目录创建文件，应被拒绝
+  $ touch /blocked.txt
+    -> Permission denied
+    [OK] 普通用户在根目录写文件应被拒绝
+
+[STEP] root 用户应可以完成相同操作
+  $ touch /root.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+    [OK] root 创建文件应成功
+  $ echo "root-ok" > /root.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+    [OK] root 写文件应成功
+  $ cat /root.txt
+    -> root-ok
+    [OK] root 写入内容应可读回
+
+[STEP] 构造一个很小的磁盘，验证写满后的错误提示
+  $ touch /big.bin
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ echo "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ... [已截断，共 9018 个字符]
+    -> No space left on device
+    [OK] 磁盘写满后应返回稳定错误文本
+
+[DONE] 05 权限与可靠性演示完成。

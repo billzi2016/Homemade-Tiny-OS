@@ -1,0 +1,72 @@
+
+==============================================================================
+06 完整系统演示
+==============================================================================
+
+[STEP] 启动系统并创建工作目录
+  $ mkdir /app
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ cd /app
+    -> /app
+  $ pwd
+    -> /app
+    [OK] 完整演示中应能切换到 /app
+
+[STEP] 创建基础文件
+  $ touch readme.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ echo "tiny os runtime" > readme.txt
+    -> <空输出，表示命令执行成功但没有返回文本>
+  $ cat readme.txt
+    -> tiny os runtime
+    [OK] readme.txt 内容应正确
+
+[STEP] 创建并推进协作式任务
+  - writer 任务 PID = 100
+  $ cat task.log
+    -> task-step-1task-step-2
+    [OK] 任务日志应完整落盘
+
+[STEP] 查看进程表和监控信息
+  $ ps
+    -> 100 writer ZOMBIE /app
+    [OK] ps 应包含 writer 任务
+  $ top
+    -> ticks=3
+    -> switches=3
+    -> current=100:writer:ZOMBIE
+    -> queue=empty
+    -> cwd=/app
+    [OK] top 应输出 tick 统计
+  $ sysstat
+    -> disk_current=32768
+    -> disk_max=131072
+    -> blocks=8
+    -> page_faults=0
+    -> tree_splits=0
+    -> scheduler_switches=3
+    [OK] sysstat 应输出磁盘状态
+  $ dmesg
+    -> [SHELL] mkdir /app
+    -> [SHELL] touch readme.txt
+    -> [SHELL] echo > readme.txt
+    -> [SCHED] created pid=100 name=writer
+    -> [SCHED] switch -> pid=100
+    -> [SHELL] echo > task.log
+    -> [SCHED] switch -> pid=100
+    -> [SHELL] echo > task.log
+    -> [SCHED] switch -> pid=100
+    -> [SCHED] exit pid=100
+    [OK] dmesg 应记录调度行为
+
+[STEP] 关闭后重新启动，验证状态恢复
+  $ cd /app
+    -> /app
+  $ cat readme.txt
+    -> tiny os runtime
+    [OK] 重启后 readme.txt 应恢复
+  $ cat task.log
+    -> task-step-1task-step-2
+    [OK] 重启后任务日志应恢复
+
+[DONE] 06 完整系统演示完成。

@@ -42,6 +42,7 @@
 - [任务清单](docs/tasks.md)
 - [项目目录树](docs/project-tree.md)
 - [Git 工作流](docs/git-workflow.md)
+- [快速开始](QUICKSTART.md)
 
 ## 设计原则
 
