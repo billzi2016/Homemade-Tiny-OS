@@ -122,11 +122,26 @@ Homemade-Tiny-OS/
 │       ├── test_monitor_commands.py
 │       └── test_disk_full_flow.py
 ├── scripts/
+│   ├── .artifacts/
+│   │   ├── 01-basic-filesystem/
+│   │   │   └── basic.disk
+│   │   ├── 02-persistence-recovery/
+│   │   │   └── persist.disk
+│   │   └── ...
+│   ├── output/
+│   │   ├── 01-basic-filesystem.log
+│   │   ├── 02-persistence-recovery.log
+│   │   └── run-all.log
 │   ├── run_tinyos.py
 │   └── inspect_disk.py
+├── tests/.artifacts/
+│   ├── test_case_a/
+│   │   └── example.disk
+│   └── ...
 ├── assets/
 │   └── sample_disk_images/
 ├── .gitignore
+├── QUICKSTART.md
 ├── README.md
 ├── pyproject.toml
 └── tinyos.disk
@@ -223,6 +238,40 @@ Homemade-Tiny-OS/
 
 - 本地启动 Tiny OS
 - 检查磁盘镜像内容
+
+### 4.12 运行产物目录
+
+项目运行后，最常见的产物有三类：
+
+- 虚拟磁盘镜像
+- 编号脚本生成的输出日志
+- 自动化测试留下的隔离产物
+
+推荐按下面的方式理解它们：
+
+- `tinyos.disk`
+  - 手动按最小示例启动时，默认落在项目根目录
+  - 这是最基础的单镜像入口
+- `scripts/.artifacts/`
+  - 编号演示脚本使用的磁盘镜像目录
+  - 每个脚本独立一份 `.disk`，避免互相污染
+- `scripts/output/`
+  - 编号脚本和 `run-all.py` 生成的展示日志
+  - 这些日志用于快速检查“脚本实际跑出了什么”
+- `tests/.artifacts/`
+  - 单元测试、联调测试、端到端测试的隔离产物目录
+  - 便于排查失败用例时直接查看对应磁盘残留
+
+需要特别注意：
+
+- `*.disk` 和 `tinyos.disk` 默认会被 `.gitignore` 忽略
+- `tests/.artifacts/` 默认也会被忽略
+- `scripts/output/` 里的日志则是项目希望保留的演示结果
+
+也就是说，目录树里要把“镜像文件”和“可提交日志”区分开来看：
+
+- 镜像偏运行时状态
+- 日志偏可审查的演示证据
 
 ## 5. 结构约束
 
